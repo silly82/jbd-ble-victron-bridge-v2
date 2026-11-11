@@ -41,7 +41,8 @@ pio device monitor
 **Arduino IDE**
 1. Ordner `esp32_jbd_ble_mqtt_v2_untested` öffnen (Ordnername = Sketchname).
 2. Bibliotheksverwalter: *NimBLE-Arduino* (2.x), *PubSubClient*, *ArduinoJson* (7.x).
-3. Konfiguration oben im Sketch anpassen, hochladen.
+3. Werkzeuge → Partition Scheme → **«Huge APP (3MB No OTA/1MB SPIFFS)»** wählen. Mit dem Standard-Schema (1.2 MB) passt die Firmware auf 4-MB-Boards nicht.
+4. Konfiguration oben im Sketch anpassen, hochladen.
 
 ## Konfiguration
 
