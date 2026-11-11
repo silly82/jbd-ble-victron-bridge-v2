@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Python syntax
+        run: |
+          python3 -m py_compile venusos/dbus_mqtt_battery.py
+          echo "Python syntax OK"
+
+      - name: Validate JSON
+        run: |
+          python3 -c "import json; json.load(open('flows.json')); print('flows.json: valid')"
+
+      - name: Check ESP32 sketch basics
+        run: |
+          grep -q "void setup" esp32_jbd_ble_mqtt_v2_untested/esp32_jbd_ble_mqtt_v2_untested.ino && echo "setup() found" || exit 1
+          grep -q "void loop"  esp32_jbd_ble_mqtt_v2_untested/esp32_jbd_ble_mqtt_v2_untested.ino && echo "loop() found"  || exit 1
+          echo "INO basics OK"
+
+      - name: Check README
+        run: |
+          test -f README.md && echo "README exists"
+          grep -q "JBD" README.md && echo "README has content"
+  build-firmware:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [esp32dev, esp32s3, esp32c3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('esp32_jbd_ble_mqtt_v2_untested/platformio.ini') }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build v2 firmware (${{ matrix.env }})
+        working-directory: esp32_jbd_ble_mqtt_v2_untested
+        run: pio run -e ${{ matrix.env }}

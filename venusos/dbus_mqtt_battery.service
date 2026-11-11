@@ -1,0 +1,28 @@
+[Unit]
+Description=Victron VenusOS DBus Battery Bridge (JBD BMS via MQTT)
+After=dbus.service dbus.socket
+Wants=dbus.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/data/dbus-mqtt-battery
+ExecStart=/usr/bin/python3 /data/dbus-mqtt-battery/dbus_mqtt_battery.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/data/dbus-mqtt-battery/dbus_mqtt_battery.log
+StandardError=append:/data/dbus-mqtt-battery/dbus_mqtt_battery.log
+Environment=MQTT_HOST=192.168.1.100
+Environment=MQTT_PORT=1883
+Environment=MQTT_TOPIC=bms/jbd/data
+Environment=DBUS_INSTANCE=256
+Environment=POLL_TIMEOUT=60
+# SmartShunt-Modus: auf 1 setzen wenn ein Victron SmartShunt vorhanden ist.
+# Der SmartShunt übernimmt dann SoC, Kapazität und Energiebilanz (Coulomb-Counting).
+# Dieser Daemon liefert nur noch JBD-spezifische Daten:
+#   Einzelzellspannungen, BMS-Schutzstatus (AllowToCharge/Discharge), Temperaturen.
+# VenusOS Einstellungen → System-Setup → Batteriemonitor: SmartShunt wählen.
+Environment=SMARTSHUNT_MODE=0
+
+[Install]
+WantedBy=multi-user.target

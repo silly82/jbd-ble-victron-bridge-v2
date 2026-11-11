@@ -1,0 +1,141 @@
+[
+  {
+    "id": "bms-bridge-tab",
+    "type": "tab",
+    "label": "JBD BMS Bridge",
+    "disabled": false
+  },
+  {
+    "id": "mqtt-in",
+    "type": "mqtt in",
+    "z": "bms-bridge-tab",
+    "name": "BMS Daten (MQTT)",
+    "topic": "bms/jbd/data",
+    "qos": "0",
+    "datatype": "auto",
+    "broker": "mqtt-broker",
+    "x": 200,
+    "y": 100,
+    "wires": [["parse-json", "debug-raw"]]
+  },
+  {
+    "id": "parse-json",
+    "type": "json",
+    "z": "bms-bridge-tab",
+    "name": "JSON parsen",
+    "property": "payload",
+    "action": "obj",
+    "pretty": false,
+    "x": 400,
+    "y": 100,
+    "wires": [["check-topic", "debug-parsed"]]
+  },
+  {
+    "id": "check-topic",
+    "type": "switch",
+    "z": "bms-bridge-tab",
+    "name": "Topic filtern",
+    "property": "topic",
+    "propertyType": "msg",
+    "rules": [
+      {
+        "t": "eq",
+        "v": "bms/jbd/data",
+        "vt": "str"
+      },
+      {
+        "t": "else"
+      }
+    ],
+    "checkall": "true",
+    "repair": false,
+    "outputs": 2,
+    "x": 580,
+    "y": 100,
+    "wires": [["bms-dashboard", "bms-influx"], ["other-topic-debug"]]
+  },
+  {
+    "id": "bms-dashboard",
+    "type": "function",
+    "z": "bms-bridge-tab",
+    "name": "BMS → Dashboard",
+    "func": "const data = msg.payload;\n\n// Werte aufbereiten\nconst soc = data.soc != null ? data.soc : (data.battery_level || 0);\nconst voltage = data.voltage || 0;\nconst current = data.current || 0;\nconst power = data.power || (voltage * current);\nconst temp = data.temperatures && data.temperatures.length > 0 ? data.temperatures[0] : null;\nconst cycles = data.cycles || 0;\n\n// Node-RED Dashboard / Status\nnode.status({\n  fill: soc > 20 ? \"green\" : \"red\",\n  shape: \"dot\",\n  text: `${soc}% | ${voltage.toFixed(2)}V`\n});\n\n// Mehrere Topics für separate Dashboard-Anzeigen\nconst topics = [\n  { topic: \"dashboard/bms/voltage\", payload: voltage, unit: \"V\" },\n  { topic: \"dashboard/bms/current\", payload: current, unit: \"A\" },\n  { topic: \"dashboard/bms/power\", payload: power, unit: \"W\" },\n  { topic: \"dashboard/bms/soc\", payload: soc, unit: \"%\" },\n  { topic: \"dashboard/bms/temperature\", payload: temp, unit: \"°C\" },\n  { topic: \"dashboard/bms/capacity\", payload: data.capacity || data.design_capacity || 0, unit: \"Ah\" },\n  { topic: \"dashboard/bms/cycles\", payload: data.cycles || 0, unit: \"\" },\n];\n\n// Optional: Zellenspannungen\nif (data.cell_voltages && Array.isArray(data.cell_voltages)) {\n  const cells = data.cell_voltages.map((v, i) => ({\n    topic: `dashboard/bms/cell/${i + 1}`,\n    payload: v,\n    unit: \"V\"\n  }));\n  topics.push(...cells);\n}\n\nreturn topics;"
+  },
+  {
+    "id": "debug-raw",
+    "type": "debug",
+    "z": "bms-bridge-tab",
+    "name": "RAW (MQTT)",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 600,
+    "y": 40
+  },
+  {
+    "id": "debug-parsed",
+    "type": "debug",
+    "z": "bms-bridge-tab",
+    "name": "DEBUG (geparst)",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 600,
+    "y": 60
+  },
+  {
+    "id": "bms-influx",
+    "type": "function",
+    "z": "bms-bridge-tab",
+    "name": "BMS → InfluxDB",
+    "func": "const data = msg.payload;\n\n// InfluxDB 2.x kompatibles Format\n// (über node-red-contrib-influxdb)\nconst fields = {\n  voltage: Number(data.voltage || 0),\n  current: Number(data.current || 0),\n  power: Number(data.power || data.voltage * data.current || 0),\n  soc: Number(data.soc != null ? data.soc : data.battery_level || 0),\n  temperature: data.temperatures && data.temperatures.length > 0 ? Number(data.temperatures[0]) : null,\n  capacity: Number(data.capacity || data.design_capacity || 0),\n  cycles: Number(data.cycles || 0)\n};\n\nmsg.payload = {\n  measurement: \"bms_jbd\",\n  tags: { device: \"jbd_battery\" },\n  fields: fields\n};\n\nreturn msg;"
+  },
+  {
+    "id": "other-topic-debug",
+    "type": "debug",
+    "z": "bms-bridge-tab",
+    "name": "Unbekanntes Topic",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "topic",
+    "targetType": "msg",
+    "x": 800,
+    "y": 60
+  },
+  {
+    "id": "heartbeat-out",
+    "type": "function",
+    "z": "bms-bridge-tab",
+    "name": "Heartbeat-Sensor",
+    "func": "// Erzeugt einen Sensor-Status wenn Daten ankommen\n// Nützlich für Node-RED Dashboard / Home Assistant\nconst heartbeat = {\n  topic: \"bms/jbd/heartbeat\",\n  payload: Date.now(),\n  online: true\n};\n\n// Home Assistant Auto-Discovery\n// (kommentiert — aktivieren wenn benötigt)\n// const discovery = {\n//   topic: \"homeassistant/sensor/jbd_bms_voltage/config\",\n//   payload: JSON.stringify({\n//     name: \"JBD BMS Spannung\",\n//     state_topic: \"bms/jbd/data\",\n//     value_template: \"{{ value_json.voltage }}\",\n//     unit_of_measurement: \"V\",\n//     device_class: \"voltage\"\n//   })\n// };\n\nreturn heartbeat;"
+  },
+  {
+    "id": "mqtt-broker",
+    "type": "mqtt-broker",
+    "name": "MQTT Broker",
+    "broker": "192.168.1.100",
+    "port": "1883",
+    "clientid": "nr_cerbo_jbd_bridge",
+    "usetls": false,
+    "compatmode": true,
+    "keepalive": "60",
+    "cleansession": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": ""
+  }
+]
